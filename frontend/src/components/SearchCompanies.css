@@ -1,0 +1,108 @@
+.search-companies {
+  animation: fadeIn 0.5s ease;
+}
+
+.search-form {
+  margin-top: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.error-message {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fee;
+  border-left: 4px solid #f44;
+  border-radius: 4px;
+  color: #c33;
+}
+
+.results-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.company-card {
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.company-card:hover {
+  border-color: #667eea;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.company-card.selected {
+  border-color: #667eea;
+  background: #f8f9ff;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.company-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.company-checkbox input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.company-info h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.commercial-name {
+  font-style: italic;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.company-details {
+  padding-left: 36px;
+}
+
+.company-details p {
+  margin: 0.5rem 0;
+  color: #555;
+}
+
+.siret {
+  font-size: 0.85rem;
+  color: #999;
+  font-family: monospace;
+}
+
+small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

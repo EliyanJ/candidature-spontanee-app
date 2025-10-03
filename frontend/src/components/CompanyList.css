@@ -1,0 +1,130 @@
+.company-list {
+  animation: fadeIn 0.5s ease;
+}
+
+.companies-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.company-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.company-item:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.company-item.selected {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.company-select {
+  cursor: pointer;
+}
+
+.company-select input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.company-content {
+  flex: 1;
+}
+
+.company-content h3 {
+  margin: 0 0 0.75rem 0;
+  color: #333;
+}
+
+.company-location,
+.company-sector,
+.company-website {
+  margin: 0.5rem 0;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.company-website a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.company-website a:hover {
+  text-decoration: underline;
+}
+
+.scraping-status {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.scraping-status.loading {
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+}
+
+.scraping-status.success {
+  background: #d1f2eb;
+  border-left: 4px solid #10b981;
+}
+
+.scraping-status.warning {
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+}
+
+.scraping-status.error {
+  background: #fee;
+  border-left: 4px solid #ef4444;
+}
+
+.scraping-status ul {
+  margin: 0.5rem 0 0 1.5rem;
+  padding: 0;
+}
+
+.scraping-status li {
+  margin: 0.25rem 0;
+  font-family: monospace;
+}
+
+.company-actions {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
