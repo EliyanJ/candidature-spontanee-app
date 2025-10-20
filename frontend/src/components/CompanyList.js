@@ -15,7 +15,27 @@ function CompanyList({ companies, selectedCompanies, onCompanySelect }) {
     setLoading(true);
     try {
       const response = await companiesAPI.getAll();
-      setAllCompanies(response.data.data);
+      const companies = response.data.data;
+
+      // Charger les emails pour chaque entreprise
+      const companiesWithEmails = await Promise.all(
+        companies.map(async (company) => {
+          try {
+            const emailsResponse = await companiesAPI.getEmails(company.id);
+            return {
+              ...company,
+              emails: emailsResponse.data.emails || []
+            };
+          } catch (err) {
+            return {
+              ...company,
+              emails: []
+            };
+          }
+        })
+      );
+
+      setAllCompanies(companiesWithEmails);
     } catch (err) {
       console.error('Erreur chargement entreprises:', err);
     } finally {
@@ -117,49 +137,31 @@ function CompanyList({ companies, selectedCompanies, onCompanySelect }) {
                     </p>
                   )}
 
-                  {/* Scraping status */}
-                  {status?.status === 'loading' && (
-                    <div className="scraping-status loading">
-                      ⏳ Recherche des emails en cours...
-                    </div>
-                  )}
-
-                  {status?.status === 'success' && (
-                    <div className="scraping-status success">
-                      ✅ {status.emails.length} email(s) trouvé(s):
+                  {/* Afficher les emails directement */}
+                  {company.emails && company.emails.length > 0 ? (
+                    <div className="emails-list">
+                      <p className="emails-title">📧 Emails trouvés :</p>
                       <ul>
-                        {status.emails.slice(0, 3).map((emailData, idx) => (
-                          <li key={idx}>
+                        {company.emails.slice(0, 3).map((emailData, idx) => (
+                          <li key={idx} className="email-item">
                             {emailData.email}
-                            {emailData.priority === 1 && ' 🎯'}
+                            {emailData.priority === 1 && <span className="priority-badge">🎯 Prioritaire</span>}
                           </li>
                         ))}
                       </ul>
+                      {company.emails.length > 3 && (
+                        <small>+ {company.emails.length - 3} autre(s) email(s)</small>
+                      )}
+                    </div>
+                  ) : company.website_url ? (
+                    <div className="no-emails">
+                      ⚠️ Aucun email trouvé sur le site
+                    </div>
+                  ) : (
+                    <div className="no-website">
+                      ❌ Site web non trouvé
                     </div>
                   )}
-
-                  {status?.status === 'failed' && (
-                    <div className="scraping-status warning">
-                      ⚠️ {status.message}
-                    </div>
-                  )}
-
-                  {status?.status === 'error' && (
-                    <div className="scraping-status error">
-                      ❌ Erreur: {status.message}
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="company-actions">
-                    <button
-                      className="btn btn-secondary btn-small"
-                      onClick={() => handleScrapeEmails(company.id)}
-                      disabled={status?.status === 'loading'}
-                    >
-                      📧 Trouver emails
-                    </button>
-                  </div>
                 </div>
               </div>
             );

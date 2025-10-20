@@ -21,7 +21,7 @@ class EmailService {
 
     const transportConfig = this.getTransportConfig();
 
-    this.transporter = nodemailer.createTransporter(transportConfig);
+    this.transporter = nodemailer.createTransport(transportConfig);
 
     console.log('✅ Transporteur email configuré');
   }

@@ -17,4 +17,7 @@ router.post('/:companyId/scrape-emails', companiesController.scrapeCompanyEmails
 // Obtenir les emails d'une entreprise
 router.get('/:companyId/emails', companiesController.getCompanyEmails.bind(companiesController));
 
+// Scraper les sites web de plusieurs entreprises en parallèle
+router.post('/scrape-websites-parallel', companiesController.scrapeWebsitesParallel.bind(companiesController));
+
 module.exports = router;

@@ -16,6 +16,7 @@ export const companiesAPI = {
   getAll: () => api.get('/companies'),
   scrapeEmails: (companyId) => api.post(`/companies/${companyId}/scrape-emails`),
   getEmails: (companyId) => api.get(`/companies/${companyId}/emails`),
+  scrapeWebsitesParallel: (companies) => api.post('/companies/scrape-websites-parallel', { companies }),
 };
 
 // Campaigns API
@@ -30,6 +31,9 @@ export const campaignsAPI = {
 export const configAPI = {
   setEmail: (config) => api.post('/config/email', config),
   testEmail: () => api.post('/config/email/test'),
+  setUserProfile: (profile) => api.post('/config/user', profile),
+  getUserProfile: () => api.get('/config/user'),
+  getAllVariables: () => api.get('/config/variables'),
 };
 
 // Upload API
@@ -43,6 +47,13 @@ export const uploadAPI = {
       },
     });
   },
+};
+
+// Constants API
+export const constantsAPI = {
+  getApeSectors: () => api.get('/constants/ape-sectors'),
+  getEffectifs: () => api.get('/constants/effectifs'),
+  getAllConstants: () => api.get('/constants/all'),
 };
 
 export default api;

@@ -1,4 +1,4 @@
-const db = require('../db/database');
+const { db, addToBlacklist } = require('../db/database');
 const emailService = require('../services/emailService');
 
 class CampaignsController {
@@ -63,7 +63,7 @@ class CampaignsController {
   async startCampaign(req, res) {
     try {
       const { campaignId } = req.params;
-      const { companyIds } = req.body;
+      const { companyIds, userId } = req.body; // Ajouter userId
 
       // Récupérer la campagne
       db.get('SELECT * FROM campaigns WHERE id = ?', [campaignId], async (err, campaign) => {
@@ -73,6 +73,23 @@ class CampaignsController {
             message: 'Campagne non trouvée'
           });
         }
+
+        // Récupérer les variables utilisateur depuis la config
+        const userVariables = await new Promise((resolve, reject) => {
+          db.all('SELECT key, value FROM config WHERE key LIKE "user_%"', [], (err, rows) => {
+            if (err) return reject(err);
+            const vars = {};
+            rows.forEach(row => {
+              // Transformer user_name en votre_nom
+              const varName = row.key.replace('user_', 'votre_');
+              vars[varName] = row.value;
+            });
+            resolve(vars);
+          });
+        });
+
+        // Ajouter la date
+        userVariables.date = new Date().toLocaleDateString('fr-FR');
 
         // Marquer comme active
         db.run('UPDATE campaigns SET status = ? WHERE id = ?', ['active', campaignId]);
@@ -92,15 +109,16 @@ class CampaignsController {
           // Prendre l'email avec la meilleure priorité
           const bestEmail = emails[0];
 
-          // Remplacer les variables dans le template
-          const variables = {
+          // COMBINER toutes les variables (entreprise + utilisateur)
+          const allVariables = {
             nom_entreprise: company.nom,
             ville: company.ville,
-            secteur_activite: company.libelle_ape
+            secteur_activite: company.libelle_ape,
+            ...userVariables // Ajoute votre_nom, votre_telephone, etc.
           };
 
-          const subject = emailService.replaceVariables(campaign.template_subject, variables);
-          const body = emailService.replaceVariables(campaign.template_body, variables);
+          const subject = emailService.replaceVariables(campaign.template_subject, allVariables);
+          const body = emailService.replaceVariables(campaign.template_body, allVariables);
 
           // Ajouter à la liste d'envoi
           emailsToSend.push({
@@ -123,8 +141,8 @@ class CampaignsController {
           totalEmails: emailsToSend.length
         });
 
-        // Envoyer les emails en arrière-plan
-        this.sendCampaignEmails(campaign, emailsToSend);
+        // Envoyer les emails en arrière-plan avec userId pour blacklist
+        this.sendCampaignEmails(campaign, emailsToSend, userId);
       });
 
     } catch (error) {
@@ -138,7 +156,7 @@ class CampaignsController {
   /**
    * Envoyer les emails d'une campagne
    */
-  async sendCampaignEmails(campaign, emailsToSend) {
+  async sendCampaignEmails(campaign, emailsToSend, userId = null) {
     const results = await emailService.sendCampaign(
       emailsToSend,
       {
@@ -170,6 +188,34 @@ class CampaignsController {
 
     // Marquer la campagne comme terminée
     db.run('UPDATE campaigns SET status = ? WHERE id = ?', ['completed', campaign.id]);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // AJOUTER LES ENTREPRISES CONTACTÉES À LA BLACKLIST
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (userId && results.length > 0) {
+      try {
+        // Récupérer les SIREN des entreprises contactées avec succès
+        const successCompanies = [];
+
+        for (const result of results) {
+          if (result.success && result.companyId) {
+            // Récupérer le SIREN de l'entreprise
+            const company = await this.getCompanyById(result.companyId);
+            if (company && company.siren) {
+              successCompanies.push(company.siren);
+            }
+          }
+        }
+
+        if (successCompanies.length > 0) {
+          await addToBlacklist(userId, successCompanies);
+          console.log(`✅ ${successCompanies.length} entreprises ajoutées à la blacklist de l'utilisateur ${userId}`);
+        }
+      } catch (error) {
+        console.error('❌ Erreur ajout blacklist:', error.message);
+        // Ne pas bloquer si l'ajout à la blacklist échoue
+      }
+    }
 
     console.log('✅ Campagne terminée');
   }

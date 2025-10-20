@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const claudeService = require('./claudeService');
 
 class ScraperService {
   constructor() {
@@ -29,128 +30,120 @@ class ScraperService {
   }
 
   /**
-   * Trouver le site web d'une entreprise via Google
+   * Trouver le site web d'une entreprise avec Claude web search natif
    * @param {string} nomEntreprise
    * @param {string} ville
+   * @param {string} siret - Pour affiner la recherche (non utilisé avec web search)
    * @returns {string|null} URL du site web
    */
-  async findWebsite(nomEntreprise, ville) {
-    let page;
+  async findWebsite(nomEntreprise, ville, siret = null) {
     try {
-      await this.initBrowser();
-      page = await this.browser.newPage();
+      // Nettoyer le nom de l'entreprise (retirer SARL, SAS, etc.)
+      const cleanedName = claudeService.cleanCompanyName(nomEntreprise);
+      console.log(`🧹 Nom nettoyé: "${nomEntreprise}" -> "${cleanedName}"`);
 
-      // Configurer le user agent pour éviter d'être bloqué
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      console.log(`🔍 Recherche web avec Claude: ${cleanedName} ${ville}`);
 
-      const searchQuery = `${nomEntreprise} ${ville} site officiel`;
-      const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+      // Utiliser le web search natif de Claude
+      const officialWebsite = await claudeService.findWebsiteWithSearch(cleanedName, ville);
 
-      console.log(`🌐 Recherche Google: ${searchQuery}`);
-
-      await page.goto(googleUrl, { waitUntil: 'networkidle0', timeout: 30000 });
-
-      // Attendre et extraire le premier résultat
-      await page.waitForSelector('#search', { timeout: 5000 });
-
-      const firstLink = await page.evaluate(() => {
-        const results = document.querySelectorAll('#search a');
-        for (let link of results) {
-          const href = link.href;
-          // Ignorer les liens Google internes
-          if (href && !href.includes('google.com') && !href.includes('youtube.com')) {
-            return href;
-          }
-        }
-        return null;
-      });
-
-      await page.close();
-
-      if (firstLink) {
-        console.log(`✅ Site trouvé: ${firstLink}`);
-        return firstLink;
+      if (officialWebsite) {
+        console.log(`✅ Site officiel trouvé: ${officialWebsite}`);
+        return officialWebsite;
       } else {
-        console.log('⚠️  Aucun site trouvé');
+        console.log('⚠️  Aucun site officiel trouvé');
         return null;
       }
 
     } catch (error) {
       console.error('❌ Erreur recherche site web:', error.message);
-      if (page) await page.close();
       return null;
     }
   }
 
   /**
-   * Scraper les emails d'un site web
+   * Scraper les sites web de plusieurs entreprises en parallèle
+   * @param {Array} companies - Liste des entreprises [{nom, ville, siret}, ...]
+   * @param {number} concurrency - Nombre d'entreprises à traiter simultanément (défaut: 5)
+   * @returns {Array} Liste des résultats [{nom, ville, websiteUrl}, ...]
+   */
+  async findWebsitesInParallel(companies, concurrency = 5) {
+    const results = [];
+    const chunks = [];
+
+    // Diviser les entreprises en groupes de {concurrency} entreprises
+    for (let i = 0; i < companies.length; i += concurrency) {
+      chunks.push(companies.slice(i, i + concurrency));
+    }
+
+    console.log(`🚀 Scraping de ${companies.length} entreprises par lots de ${concurrency}`);
+
+    // Traiter chaque groupe en parallèle
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      console.log(`\n📦 Lot ${i + 1}/${chunks.length} : ${chunk.length} entreprises`);
+
+      // Lancer les recherches en parallèle pour ce groupe
+      const promises = chunk.map(async (company) => {
+        try {
+          const websiteUrl = await this.findWebsite(company.nom, company.ville, company.siret);
+          return {
+            nom: company.nom,
+            ville: company.ville,
+            siret: company.siret,
+            websiteUrl
+          };
+        } catch (error) {
+          console.error(`❌ Erreur pour ${company.nom}:`, error.message);
+          return {
+            nom: company.nom,
+            ville: company.ville,
+            siret: company.siret,
+            websiteUrl: null
+          };
+        }
+      });
+
+      // Attendre que tout le groupe soit terminé
+      const chunkResults = await Promise.all(promises);
+      results.push(...chunkResults);
+
+      console.log(`✅ Lot ${i + 1}/${chunks.length} terminé`);
+    }
+
+    const successCount = results.filter(r => r.websiteUrl).length;
+    console.log(`\n🎉 Scraping terminé: ${successCount}/${companies.length} sites trouvés`);
+
+    return results;
+  }
+
+  /**
+   * Scraper les emails d'un site web avec Claude web search
    * @param {string} url
+   * @param {string} companyName - Nom de l'entreprise pour contexte
    * @returns {Array} Liste d'emails avec priorité
    */
-  async scrapeEmails(url) {
-    let page;
+  async scrapeEmails(url, companyName = '') {
     try {
-      await this.initBrowser();
-      page = await this.browser.newPage();
+      console.log(`📧 Recherche email avec Claude pour: ${url}`);
 
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      // Utiliser le web search natif de Claude pour trouver l'email
+      const emailResult = await claudeService.findEmailWithSearch(companyName, url);
 
-      console.log(`📧 Scraping emails sur: ${url}`);
-
-      await page.goto(url, {
-        waitUntil: 'networkidle0',
-        timeout: 30000
-      });
-
-      // Récupérer tous les liens de la page
-      const links = await page.evaluate(() => {
-        const allLinks = Array.from(document.querySelectorAll('a'));
-        return allLinks.map(link => ({
-          text: link.textContent.toLowerCase().trim(),
-          href: link.href
-        }));
-      });
-
-      // Filtrer les liens intéressants (contact, recrutement, etc.)
-      const keywords = ['contact', 'recrutement', 'carriere', 'jobs', 'emploi', 'rh', 'career', 'about', 'a-propos'];
-      const interestingLinks = links.filter(link =>
-        keywords.some(keyword => link.text.includes(keyword) || link.href.includes(keyword))
-      ).map(link => link.href)
-       .filter((href, index, self) => self.indexOf(href) === index) // Unique
-       .slice(0, 5); // Max 5 pages
-
-      console.log(`📄 ${interestingLinks.length} pages intéressantes trouvées`);
-
-      // Collecter les emails de toutes les pages
-      let allEmails = new Set();
-
-      // Page principale
-      const mainPageEmails = await this.extractEmailsFromPage(page);
-      mainPageEmails.forEach(email => allEmails.add(email));
-
-      // Pages intéressantes
-      for (const link of interestingLinks) {
-        try {
-          await page.goto(link, { waitUntil: 'networkidle0', timeout: 15000 });
-          const pageEmails = await this.extractEmailsFromPage(page);
-          pageEmails.forEach(email => allEmails.add(email));
-        } catch (error) {
-          console.log(`⚠️  Erreur sur ${link}`);
-        }
+      if (emailResult && emailResult.email) {
+        console.log(`✅ Email trouvé par Claude: ${emailResult.email}`);
+        return [{
+          email: emailResult.email,
+          priority: emailResult.priority || 2,
+          source_page: emailResult.source || url
+        }];
+      } else {
+        console.log('⚠️  Aucun email pertinent trouvé par Claude');
+        return [];
       }
-
-      await page.close();
-
-      // Filtrer et prioriser les emails
-      const emails = Array.from(allEmails);
-      const validEmails = this.filterAndPrioritizeEmails(emails);
-
-      console.log(`✅ ${validEmails.length} emails trouvés`);
-      return validEmails;
 
     } catch (error) {
       console.error('❌ Erreur scraping emails:', error.message);
-      if (page) await page.close();
       return [];
     }
   }

@@ -73,6 +73,22 @@ function Settings() {
     }
   };
 
+  const handleSaveProfile = async () => {
+    try {
+      await configAPI.setUserProfile({
+        name: config.user_name,
+        phone: config.user_phone,
+        linkedin: config.user_linkedin,
+        formation: config.user_formation,
+        ecole: config.user_ecole
+      });
+
+      alert('✅ Profil sauvegardé avec succès');
+    } catch (err) {
+      alert('Erreur sauvegarde profil: ' + err.message);
+    }
+  };
+
   return (
     <div className="settings">
       <div className="card">
@@ -215,7 +231,11 @@ function Settings() {
           />
         </div>
 
-        <button type="button" className="btn btn-primary">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleSaveProfile}
+        >
           💾 Sauvegarder le profil
         </button>
       </div>

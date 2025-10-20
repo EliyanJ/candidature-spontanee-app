@@ -11,6 +11,16 @@ const db = new sqlite3.Database(path.join(__dirname, 'candidatures.db'), (err) =
   }
 });
 
+// Fonction pour exécuter la migration
+async function runMigrations() {
+  try {
+    const { migrateCompaniesTable } = require('./migrations');
+    await migrateCompaniesTable();
+  } catch (error) {
+    console.error('❌ Erreur lors de la migration:', error);
+  }
+}
+
 // Initialiser les tables
 function initDatabase() {
   db.serialize(() => {
@@ -108,8 +118,127 @@ function initDatabase() {
       )
     `);
 
+    // Table de configuration clé-valeur
+    db.run(`
+      CREATE TABLE IF NOT EXISTS config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Table de blacklist utilisateur (pour éviter les doublons de candidatures)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS user_company_blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        company_siren TEXT NOT NULL,
+        contacted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, company_siren)
+      )
+    `, (err) => {
+      if (err) {
+        console.error('❌ Erreur création table blacklist:', err);
+      } else {
+        // Créer un index pour optimiser les recherches
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_blacklist_user
+          ON user_company_blacklist(user_id)
+        `);
+      }
+    });
+
     console.log('✅ Tables créées/vérifiées');
+
+    // Exécuter les migrations après la création des tables
+    runMigrations();
   });
 }
 
-module.exports = db;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FONCTIONS HELPER POUR LA BLACKLIST
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Récupérer la liste des SIREN déjà contactés par un utilisateur
+ * @param {String} userId - ID de l'utilisateur
+ * @returns {Promise<Array>} Liste des SIREN
+ */
+function getUserBlacklist(userId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT company_siren FROM user_company_blacklist WHERE user_id = ?',
+      [userId],
+      (err, rows) => {
+        if (err) {
+          console.error('❌ Erreur récupération blacklist:', err);
+          reject(err);
+        } else {
+          resolve(rows.map(r => r.company_siren));
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Ajouter des entreprises à la blacklist d'un utilisateur
+ * @param {String} userId - ID de l'utilisateur
+ * @param {Array<String>} sirenList - Liste des SIREN à blacklister
+ * @returns {Promise<void>}
+ */
+function addToBlacklist(userId, sirenList) {
+  return new Promise((resolve, reject) => {
+    if (!sirenList || sirenList.length === 0) {
+      return resolve();
+    }
+
+    const placeholders = sirenList.map(() => '(?, ?)').join(',');
+    const values = sirenList.flatMap(siren => [userId, siren]);
+
+    const query = `
+      INSERT OR IGNORE INTO user_company_blacklist (user_id, company_siren)
+      VALUES ${placeholders}
+    `;
+
+    db.run(query, values, function(err) {
+      if (err) {
+        console.error('❌ Erreur ajout blacklist:', err);
+        reject(err);
+      } else {
+        console.log(`✅ ${this.changes} entreprises ajoutées à la blacklist de l'utilisateur ${userId}`);
+        resolve();
+      }
+    });
+  });
+}
+
+/**
+ * Compter le nombre d'entreprises blacklistées par un utilisateur
+ * @param {String} userId - ID de l'utilisateur
+ * @returns {Promise<Number>}
+ */
+function countBlacklistedCompanies(userId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT COUNT(*) as count FROM user_company_blacklist WHERE user_id = ?',
+      [userId],
+      (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row.count);
+        }
+      }
+    );
+  });
+}
+
+// Exporter la DB et les fonctions helper
+module.exports = {
+  db,
+  getUserBlacklist,
+  addToBlacklist,
+  countBlacklistedCompanies
+};

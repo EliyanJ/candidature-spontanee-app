@@ -118,6 +118,68 @@
   color: #666;
 }
 
+/* Emails display */
+.emails-list {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #e8f5e9;
+  border-left: 4px solid #4caf50;
+  border-radius: 8px;
+}
+
+.emails-title {
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.emails-list ul {
+  margin: 0.5rem 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.email-item {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.priority-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background: #ff9800;
+  color: white;
+  border-radius: 12px;
+  margin-left: 0.5rem;
+}
+
+.no-emails {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.no-website {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: #fee;
+  border-left: 4px solid #f44;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #c33;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

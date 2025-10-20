@@ -30,12 +30,32 @@ if (!fs.existsSync('./uploads')) {
   fs.mkdirSync('./uploads');
 }
 
+// Initialiser le service email avec les variables d'environnement
+const emailService = require('./services/emailService');
+
+// Charger la config depuis .env au démarrage
+if (process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD) {
+  console.log('📧 Initialisation du service email...');
+  emailService.setupTransporter({
+    email: process.env.SMTP_EMAIL,
+    password: process.env.SMTP_PASSWORD,
+    type: process.env.SMTP_TYPE || 'gmail'
+  });
+  console.log('✅ Service email initialisé avec:', process.env.SMTP_EMAIL);
+} else {
+  console.warn('⚠️ Variables SMTP non définies dans .env - Configuration manuelle requise');
+}
+
 // Routes
 const companiesRoutes = require('./routes/companies');
 const campaignsRoutes = require('./routes/campaigns');
+const configRoutes = require('./routes/config');
+const constantsRoutes = require('./routes/constants');
 
 app.use('/api/companies', companiesRoutes);
 app.use('/api/campaigns', campaignsRoutes);
+app.use('/api/config', configRoutes);
+app.use('/api/constants', constantsRoutes);
 
 // Route pour upload de CV
 app.post('/api/upload-cv', upload.single('cv'), (req, res) => {
@@ -57,40 +77,6 @@ app.get('/api/health', (req, res) => {
     message: 'API fonctionnelle',
     timestamp: new Date().toISOString()
   });
-});
-
-// Configuration email test
-const emailService = require('./services/emailService');
-
-app.post('/api/config/email', (req, res) => {
-  try {
-    const { email, password, type } = req.body;
-
-    emailService.setupTransporter({ email, password, type });
-
-    res.json({
-      success: true,
-      message: 'Configuration email mise à jour'
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-});
-
-app.post('/api/config/email/test', async (req, res) => {
-  try {
-    const result = await emailService.testConnection();
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
 });
 
 // Gestion des erreurs
