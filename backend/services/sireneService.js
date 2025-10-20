@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { resolveLocation } = require('../constants/cities');
+const { resolveLocation, selectRandomArrondissements } = require('../constants/cities');
 const { getLibelleEffectif } = require('../constants/effectifs');
 require('dotenv').config();
 
@@ -11,6 +11,8 @@ class SireneService {
     this.DELAY_BETWEEN_REQUESTS = 150; // ms - 6.6 req/sec (sous la limite de 7)
     this.MULTIPLIER = 6; // Récupérer 6× plus pour bonne randomisation
     this.MAX_PER_PAGE = 25; // Limite API
+    this.MAX_API_PAGE = 300; // Page maximale accessible par l'API (testé jusqu'à 300)
+    this.ARRONDISSEMENTS_COUNT = 3; // Nombre d'arrondissements à sélectionner par recherche
   }
 
   /**
@@ -92,10 +94,11 @@ class SireneService {
   }
 
   /**
-   * 📄 RÉCUPÉRATION SÉQUENTIELLE avec délais de sécurité
+   * 📄 RÉCUPÉRATION SÉQUENTIELLE avec délais de sécurité ET RANDOMISATION DES PAGES
    *
    * Récupère plusieurs pages de l'API en respectant le rate limit
    * Stratégie conservatrice : 150ms entre chaque requête = 6.6 req/sec
+   * 🎲 Nouveauté : Pioche des numéros de pages aléatoires pour diversifier les résultats
    *
    * @param {Object} filters - Filtres de recherche
    * @param {Number} totalNeeded - Nombre total d'entreprises à récupérer
@@ -105,13 +108,39 @@ class SireneService {
     const pagesNeeded = Math.ceil(totalNeeded / this.MAX_PER_PAGE);
     let allResults = [];
 
-    console.log(`\n📄 Récupération de ${pagesNeeded} pages (${this.MAX_PER_PAGE} entreprises/page)...`);
+    // ⚠️ IMPORTANT : Construire les paramètres UNE SEULE FOIS avant la boucle
+    // pour que la randomisation géographique soit la même pour toutes les pages
+    const baseParams = this.buildParams(filters);
 
-    for (let page = 1; page <= pagesNeeded; page++) {
+    // 🔍 ÉTAPE PRÉLIMINAIRE : Vérifier combien de résultats sont disponibles
+    let totalAvailable = 0;
+    let maxAvailablePages = this.MAX_API_PAGE;
+
+    try {
+      const probeResponse = await axios.get(`${this.baseUrl}/search`, {
+        params: { ...baseParams, per_page: 1, page: 1 }
+      });
+      totalAvailable = probeResponse.data.total_results || 0;
+      maxAvailablePages = Math.min(Math.ceil(totalAvailable / this.MAX_PER_PAGE), this.MAX_API_PAGE);
+
+      console.log(`📊 Total disponible: ${totalAvailable} entreprises (${maxAvailablePages} pages max)`);
+    } catch (error) {
+      console.warn(`⚠️  Impossible de vérifier le total disponible, utilisation de ${this.MAX_API_PAGE} pages par défaut`);
+    }
+
+    // 🎲 GÉNÉRATION DES NUMÉROS DE PAGES ALÉATOIRES (limité au nombre réel de pages)
+    const effectivePagesNeeded = Math.min(pagesNeeded, maxAvailablePages);
+    const randomPageNumbers = this.generateRandomPageNumbers(effectivePagesNeeded, maxAvailablePages);
+
+    console.log(`\n📄 Récupération de ${effectivePagesNeeded} pages (${this.MAX_PER_PAGE} entreprises/page)...`);
+    console.log(`🎲 Pages aléatoires: [${randomPageNumbers.join(', ')}]`);
+
+    for (let i = 0; i < effectivePagesNeeded; i++) {
+      const page = randomPageNumbers[i];
       try {
-        // Construire les paramètres de la requête
+        // Utiliser les paramètres de base (même zones géo pour toutes les pages)
         const params = {
-          ...this.buildParams(filters),
+          ...baseParams,
           per_page: this.MAX_PER_PAGE,
           page: page
         };
@@ -124,10 +153,10 @@ class SireneService {
         const formatted = results.map(company => this.formatCompany(company));
         allResults = [...allResults, ...formatted];
 
-        console.log(`  ✓ Page ${page}/${pagesNeeded} : ${formatted.length} entreprises récupérées`);
+        console.log(`  ✓ Page ${page} (${i + 1}/${pagesNeeded}) : ${formatted.length} entreprises récupérées`);
 
         // ⚠️ CRITIQUE : Délai entre requêtes (sauf dernière page)
-        if (page < pagesNeeded) {
+        if (i < pagesNeeded - 1) {
           await this.sleep(this.DELAY_BETWEEN_REQUESTS);
         }
 
@@ -139,7 +168,7 @@ class SireneService {
 
           // Attendre 1 seconde et réessayer
           await this.sleep(1000);
-          page--; // Réessayer cette page
+          i--; // Réessayer cette page (décrementer l'index)
         } else {
           console.error(`❌ Erreur page ${page}:`, error.message);
           // Continuer malgré l'erreur
@@ -175,9 +204,21 @@ class SireneService {
       const resolved = resolveLocation(filters.location);
 
       if (resolved.success && resolved.codePostaux.length > 0) {
+        let selectedCodes = resolved.codePostaux;
+
+        // 🎲 RANDOMISATION GÉOGRAPHIQUE
+        // Si la ville a plusieurs codes postaux (>3), sélectionner aléatoirement N zones
+        // pour diversifier les résultats sans réduire la couverture géographique
+        if (resolved.codePostaux.length > this.ARRONDISSEMENTS_COUNT) {
+          selectedCodes = selectRandomArrondissements(resolved.codePostaux, this.ARRONDISSEMENTS_COUNT);
+          console.log(`🎲 Randomisation géographique: ${selectedCodes.length}/${resolved.codePostaux.length} zones sélectionnées`);
+          console.log(`   Codes postaux: [${selectedCodes.join(', ')}]`);
+        } else {
+          console.log(`📍 Localisation: ${resolved.codePostaux.length} codes postaux (${resolved.type})`);
+        }
+
         // L'API accepte plusieurs codes postaux séparés par des virgules
-        params.code_postal = resolved.codePostaux.join(',');
-        console.log(`📍 Localisation: ${resolved.codePostaux.length} codes postaux (${resolved.type})`);
+        params.code_postal = selectedCodes.join(',');
       } else {
         console.warn(`⚠️  Localisation "${filters.location}" non résolue`);
       }
@@ -290,6 +331,30 @@ class SireneService {
     }
 
     return shuffled;
+  }
+
+  /**
+   * 🎲 GÉNÉRATION DE NUMÉROS DE PAGES ALÉATOIRES UNIQUES
+   *
+   * Génère N numéros de pages aléatoires différents entre 1 et maxPage
+   * Garantit qu'aucun numéro ne se répète
+   *
+   * @param {Number} count - Nombre de pages à générer
+   * @param {Number} maxPage - Numéro de page maximum (ex: 200)
+   * @returns {Array<Number>} Liste de numéros de pages uniques
+   */
+  generateRandomPageNumbers(count, maxPage) {
+    // Si on demande plus de pages que le maximum disponible, limiter
+    const actualCount = Math.min(count, maxPage);
+
+    // Créer un tableau avec tous les numéros possibles [1, 2, 3, ..., maxPage]
+    const allPages = Array.from({ length: maxPage }, (_, i) => i + 1);
+
+    // Mélanger avec Fisher-Yates
+    const shuffled = this.shuffleArray(allPages);
+
+    // Prendre les N premiers
+    return shuffled.slice(0, actualCount);
   }
 
   /**
