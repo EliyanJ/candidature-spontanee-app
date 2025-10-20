@@ -4,7 +4,7 @@ import './SearchCompanies.css';
 
 function SearchCompanies({ onCompanySelect, selectedCompanies, onCompaniesSaved }) {
   const [filters, setFilters] = useState({
-    secteur: '',
+    secteur: 'all', // Par défaut : Tous les secteurs
     location: '',
     effectif: '20+'
   });
@@ -63,16 +63,19 @@ function SearchCompanies({ onCompanySelect, selectedCompanies, onCompaniesSaved 
         return;
       }
 
-      // Prendre le premier code APE du secteur (on pourrait aussi chercher avec tous)
-      const codeApe = selectedSector.codes[0].value;
+      // Si "Tous les secteurs" est sélectionné (id === 'all'), ne pas envoyer de codeApe
+      // Sinon, prendre le premier code APE du secteur
+      const codeApe = selectedSector.id === 'all' ? undefined : selectedSector.codes[0]?.value;
 
       // Construire les paramètres de recherche
       const searchParams = {
-        codeApe,
+        codeApe, // undefined si "Tous les secteurs"
         location: filters.location,
         tranche_effectif_salarie: filters.effectif !== '20+' ? filters.effectif : undefined,
         nombre: 20 // Fixé à 20
       };
+
+      console.log('🔍 Recherche avec secteur:', selectedSector.label, 'codeApe:', codeApe || 'TOUS');
 
       // Recherche des entreprises (rapide - sans scraping)
       const response = await companiesAPI.search(searchParams);
@@ -147,6 +150,24 @@ function SearchCompanies({ onCompanySelect, selectedCompanies, onCompaniesSaved 
     return selectedCompanies.some(c => c.siret === company.siret);
   };
 
+  const handleSelectAll = () => {
+    // Sélectionner toutes les entreprises des résultats
+    searchResults.forEach(company => {
+      if (!isSelected(company)) {
+        onCompanySelect(company);
+      }
+    });
+  };
+
+  const handleDeselectAll = () => {
+    // Désélectionner toutes les entreprises des résultats
+    searchResults.forEach(company => {
+      if (isSelected(company)) {
+        onCompanySelect(company);
+      }
+    });
+  };
+
   return (
     <div className="search-companies">
       <div className="card">
@@ -154,27 +175,25 @@ function SearchCompanies({ onCompanySelect, selectedCompanies, onCompaniesSaved 
 
         <form onSubmit={handleSearch} className="search-form">
           <div className="filter-hint">
-            💡 <strong>Nouveauté</strong> : Recherche optimisée pour les entreprises de <strong>20+ employés</strong> avec site internet.
-            Les résultats sont limités à <strong>20 entreprises max</strong>.
+            💡 <strong>Nouveauté</strong> : Par défaut, la recherche porte sur <strong>tous les secteurs</strong> pour garantir ~20 résultats.
+            Vous pouvez affiner par catégorie si besoin.
           </div>
 
           <div className="grid grid-2">
             <div className="form-group">
-              <label>Secteur d'activité *</label>
+              <label>Secteur d'activité</label>
               <select
                 name="secteur"
                 value={filters.secteur}
                 onChange={handleInputChange}
-                required
               >
-                <option value="">-- Choisir un secteur --</option>
                 {sectors.map(sector => (
                   <option key={sector.id} value={sector.id}>
                     {sector.icon} {sector.label}
                   </option>
                 ))}
               </select>
-              <small>Sélectionnez le secteur qui vous intéresse</small>
+              <small>Par défaut : Tous les secteurs (meilleurs résultats)</small>
             </div>
 
             <div className="form-group">
@@ -266,7 +285,27 @@ function SearchCompanies({ onCompanySelect, selectedCompanies, onCompaniesSaved 
       {/* Résultats */}
       {searchResults.length > 0 && (
         <div className="card">
-          <h2>📋 Résultats ({searchResults.length})</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2>📋 Résultats ({searchResults.length})</h2>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleSelectAll}
+                disabled={loading}
+              >
+                ✅ Tout sélectionner
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleDeselectAll}
+                disabled={loading}
+              >
+                ❌ Tout désélectionner
+              </button>
+            </div>
+          </div>
 
           <div className="results-list">
             {searchResults.map((company, index) => (
